@@ -1,47 +1,70 @@
-//create web server
-var http = require('http');
-var fs = require('fs');
-var url = require('url');
-var querystring = require('querystring');
-var comments = [];
+//Create web server
 
-http.createServer(function(req, res) {
-    //parse the url
-    var urlObj = url.parse(req.url, true);
-    if (urlObj.pathname === '/') {
-        fs.readFile('index.html', function(err, data) {
-            if (err) {
-                res.writeHead(500, {
-                    'Content-Type': 'text/plain'
-                });
-                res.end(err);
-            }
-            res.writeHead(200, {
-                'Content-Type': 'text/html'
-            });
-            res.end(data);
-        });
-    } else if (urlObj.pathname === '/comment') {
-        //get the data
-        var data = urlObj.query;
-        comments.push(data);
-        res.writeHead(200, {
-            'Content-Type': 'text/plain'
-        });
-        res.end(JSON.stringify(comments));
-    } else {
-        fs.readFile(urlObj.pathname.substring(1), function(err, data) {
-            if (err) {
-                res.writeHead(404, {
-                    'Content-Type': 'text/plain'
-                });
-                res.end('Page not found');
-            }
-            res.writeHead(200, {
-                'Content-Type': 'text/html'
-            });
-            res.end(data);
-        });
+var http = require('http');
+var url = require('url');
+var fs = require('fs');
+var formidable = require('formidable');
+var comments = require('./comments');
+var path = require('path');
+var mime = require('mime');
+var util = require('util');
+
+var server = http.createServer(function(req, res) {
+  var urlPath = url.parse(req.url).pathname;
+  console.log('urlPath', urlPath);
+  switch(urlPath) {
+    case '/':
+      serveStatic(res, 'public/index.html', 'text/html');
+      break;
+    case '/new':
+      newComment(req, res);
+      break;
+    case '/comments':
+      serveComments(res);
+      break;
+    default:
+      serveStatic(res, 'public' + urlPath);
+  }
+});
+
+function newComment(req, res) {
+  var form = new formidable.IncomingForm();
+  form.parse(req, function(err, fields, files) {
+    comments.add(fields.name, fields.comment, function(err) {
+      if (err) {
+        res.statusCode = 500;
+        res.end('Server error');
+        return;
+      }
+      serveComments(res);
+    });
+  });
+}
+
+function serveComments(res) {
+  comments.all(function(err, data) {
+    if (err) {
+      res.statusCode = 500;
+      res.end('Server error');
+      return;
     }
-}).listen(3000);
-console.log('Server running at http://localhost:3000/');
+    res.end(data);
+  });
+}
+
+function serveStatic(res, file, type) {
+  type = type || 'text/plain';
+  fs.readFile(file, function(err, data) {
+    if (err) {
+      res.statusCode = 500;
+      res.end('Server error');
+      return;
+    }
+    res.setHeader('Content-Type', type);
+    res.end(data);
+  });
+}
+
+server.listen(8000, function() {
+  console.log('Listening on http://localhost:8000');
+});
